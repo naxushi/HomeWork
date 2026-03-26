@@ -1,0 +1,158 @@
+import logging
+from typing import List, Optional
+from fastapi import APIRouter, HTTPException, Query
+from pydantic import BaseModel
+import json
+import os
+
+logger = logging.getLogger(__name__)
+router = APIRouter(prefix="/products", tags=["products"])
+
+class SportsEquipment(BaseModel):
+    id: Optional[int] = None
+    name: str             
+    sport_type: str        
+    price: float          
+
+DATA_FILE = "sports_equipment.json"
+
+def load_data():
+    if os.path.exists(DATA_FILE):
+        with open(DATA_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return []
+
+def save_data(data):
+    with open(DATA_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+
+def init_test_data():
+    """Создает тестовые данные при первом запуске"""
+    if not os.path.exists(DATA_FILE) or os.path.getsize(DATA_FILE) == 0:
+        test_data = [
+            {
+                "id": 1,
+                "name": "Футбольный мяч Adidas",
+                "sport_type": "футбол",
+                "price": 3500.00
+            },
+            {
+                "id": 2,
+                "name": "Баскетбольный мяч Wilson",
+                "sport_type": "баскетбол",
+                "price": 4200.00
+            },
+            {
+                "id": 3,
+                "name": "Теннисная ракетка Wilson",
+                "sport_type": "теннис",
+                "price": 8900.00
+            },
+            {
+                "id": 4,
+                "name": "Беговые кроссовки Nike",
+                "sport_type": "бег",
+                "price": 12500.00
+            },
+            {
+                "id": 5,
+                "name": "Хоккейная клюшка Bauer",
+                "sport_type": "хоккей",
+                "price": 7500.00
+            },
+            {
+                "id": 6,
+                "name": "Футболка Adidas",
+                "sport_type": "футбол",
+                "price": 2500.00
+            },
+            {
+                "id": 7,
+                "name": "Баскетбольная форма Nike",
+                "sport_type": "баскетбол",
+                "price": 6800.00
+            },
+            {
+                "id": 8,
+                "name": "Плавательные очки Speedo",
+                "sport_type": "плавание",
+                "price": 1800.00
+            }
+        ]
+        save_data(test_data)
+        logger.info("Созданы тестовые данные")
+
+init_test_data()
+
+
+# GET - получить список спортивного инвентаря (конкретный маршрут)
+@router.get("/")
+def get_products(
+    sport_type: Optional[str] = Query(None, description="Фильтр по типу спорта"),
+    sorting: Optional[str] = Query(None, description="Сортировка: asc или desc")
+):
+    items = load_data()
+    
+    if sport_type:
+        items = [item for item in items if item.get("sport_type", "").lower() == sport_type.lower()]
+    
+    if sorting == "asc":
+        items.sort(key=lambda x: x.get("name", ""))
+    elif sorting == "desc":
+        items.sort(key=lambda x: x.get("name", ""), reverse=True)
+    
+    return items
+
+# POST - создать новый товар (CREATE операция)
+@router.post("/")
+def create_product(product: SportsEquipment):
+    items = load_data()
+    
+    # Генерируем новый id
+    new_id = max([item.get("id", 0) for item in items], default=0) + 1
+    product.id = new_id
+    
+    items.append(product.dict())
+    save_data(items)
+    
+    logger.info(f"Создан новый товар: {product.name} (ID: {new_id})")
+    return product
+
+
+# GET - получить один товар по id
+@router.get("/{item_id}")
+def get_product(item_id: int):
+    items = load_data()
+    for item in items:
+        if item.get("id") == item_id:
+            return item
+    raise HTTPException(status_code=404, detail="Товар не найден")
+
+# PUT - обновить товар
+@router.put("/{item_id}")
+def update_product(item_id: int, product: SportsEquipment):
+    items = load_data()
+    
+    for i, existing_item in enumerate(items):
+        if existing_item.get("id") == item_id:
+            product.id = item_id
+            items[i] = product.dict()
+            save_data(items)
+            logger.info(f"Обновлен товар ID: {item_id}")
+            return product
+    
+    raise HTTPException(status_code=404, detail="Товар не найден")
+
+# DELETE - удалить товар
+@router.delete("/{item_id}")
+def delete_product(item_id: int):
+    items = load_data()
+    
+    for i, item in enumerate(items):
+        if item.get("id") == item_id:
+            deleted = items.pop(i)
+            save_data(items)
+            logger.info(f"Удален товар ID: {item_id}")
+            return {"message": "Товар удален", "product": deleted}
+    
+    raise HTTPException(status_code=404, detail="Товар не найден")
